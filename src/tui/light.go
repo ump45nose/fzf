@@ -348,9 +348,85 @@ func getEnv(name string, defaultValue int) int {
 func csiContinues(b byte) bool { return b >= 0x20 && b <= 0x3f }
 func csiFinal(b byte) bool     { return b >= 0x40 && b <= 0x7e }
 
+// csiEnd returns the length of the CSI sequence at the start of the buffer, or
+// 0 if it has no final byte yet or is malformed.
+func csiEnd(buffer []byte) int {
+	for i := 2; i < len(buffer); i++ {
+		if csiFinal(buffer[i]) {
+			return i + 1
+		}
+		if !csiContinues(buffer[i]) {
+			return 0
+		}
+	}
+	return 0
+}
+
+// stringEnd returns the length of the string sequence (DCS, OSC or APC) at the
+// start of the buffer, up to and including whatever ended it. It returns 0 while
+// nothing has ended it, and also when the terminator comes straight after the
+// introducer: no terminal sends an empty string sequence, so that means the
+// introducer was ALT-], ALT-P or ALT-_ with a sequence of its own behind it, and
+// framing it would swallow the ALT key.
+func stringEnd(buffer []byte) int {
+	if len(buffer) < 2 {
+		return 0
+	}
+	// Every one of them ends with ST. BEL ends an OSC as well, because xterm has
+	// always allowed it, but stopping at a BEL inside a DCS or APC payload would
+	// frame only its first half and leave the rest to be typed into the query.
+	bel := buffer[1] == ']'
+	for i := 2; i < len(buffer); i++ {
+		switch buffer[i] {
+		case '\a':
+			if bel {
+				if i == 2 {
+					return 0 // empty
+				}
+				return i + 1
+			}
+		case Esc.Byte():
+			if i+1 == len(buffer) {
+				return 0 // ST may still be arriving
+			}
+			if i == 2 {
+				return 0 // empty
+			}
+			if buffer[i+1] == '\\' {
+				return i + 2
+			}
+			// Any other ESC ends the string and introduces a sequence of its
+			// own, so frame only what precedes it and leave the ESC to be
+			// parsed again. Scanning past it would swallow that sequence too.
+			return i
+		}
+	}
+	return 0
+}
+
+// csiIntroducer reports whether the byte after ESC starts a sequence that is
+// framed by a final byte. The parser routes CSI and SS3 through the same
+// parameterized subcases, so both are framed by csiEnd.
+func csiIntroducer(b byte) bool {
+	return b == '[' || b == 'O'
+}
+
+// stringIntroducer reports whether the byte after ESC starts a string sequence.
+// Only the three that terminals actually reply with: OSC for colors, title and
+// clipboard, DCS for XTVERSION and XTGETTCAP, APC for Kitty graphics. SOS and PM
+// are left out, as nothing sends them and waiting for a terminator that will
+// never come would delay ALT-X and ALT-^.
+func stringIntroducer(b byte) bool {
+	switch b {
+	case 'P', ']', '_':
+		return true
+	}
+	return false
+}
+
 // incompleteEscape reports whether the buffer ends in an escape sequence that
-// has not been terminated yet. The read loop keeps waiting in that case, so the
-// parser is never handed a fragment to guess at.
+// has not been terminated yet. The read loop keeps waiting while it does, so a
+// fragment reaches the parser only once that wait has run out.
 func incompleteEscape(buffer []byte) bool {
 	// Only the tail can hold a sequence still arriving. This runs once per byte
 	// read, so scanning all of a large paste would make the read quadratic.
@@ -362,8 +438,9 @@ func incompleteEscape(buffer []byte) bool {
 	if start < 0 || len(tail)-start < 2 {
 		return false
 	}
-	switch tail[start+1] {
-	case '[':
+	// Declaring SS3 finished after one byte made the parser give up on a split
+	// \eO1;5A and type its tail into the query.
+	if csiIntroducer(tail[start+1]) {
 		for _, b := range tail[start+2:] {
 			if csiFinal(b) {
 				return false
@@ -373,8 +450,6 @@ func incompleteEscape(buffer []byte) bool {
 			}
 		}
 		return true
-	case 'O':
-		return len(tail)-start < 3
 	}
 	return false
 }
@@ -483,8 +558,10 @@ func (r *LightRenderer) GetChar(cancellable bool) Event {
 		return Event{CtrlSlash, 0, nil}
 	case Esc.Byte():
 		ev := r.escSequence(&sz)
-		// Second chance
-		if ev.Type == Invalid {
+		// Second chance, but only for a sequence that has not finished
+		// arriving. Re-reading after a complete one blocks until the next
+		// keystroke, holding back whatever follows it in the buffer.
+		if ev.Type == Invalid && incompleteEscape(r.buffer) {
 			r.buffer, result, err = r.getBytes(true)
 			if err != nil {
 				return Event{Fatal, 0, nil}
@@ -525,7 +602,24 @@ func (r *LightRenderer) setCancel(f func()) {
 	r.mutex.Unlock()
 }
 
+// escSequence parses an escape sequence, widening a CSI sequence that
+// parseEscSequence recognized the start of but gave up on partway. Consuming
+// only the part that parsed would leave the rest to be read as input and typed
+// into the query. Sequences that match nothing at all are dropped there instead.
 func (r *LightRenderer) escSequence(sz *int) Event {
+	ev := r.parseEscSequence(sz)
+	if ev.Type != Invalid || len(r.buffer) < 3 || !csiIntroducer(r.buffer[1]) {
+		return ev
+	}
+	// Only a framed sequence is dropped. One still missing its final byte may
+	// yet be arriving, and the caller gives it another chance.
+	if end := csiEnd(r.buffer); end > *sz {
+		*sz = end
+	}
+	return ev
+}
+
+func (r *LightRenderer) parseEscSequence(sz *int) Event {
 	if len(r.buffer) < 2 {
 		return Event{Esc, 0, nil}
 	}
@@ -987,6 +1081,24 @@ func (r *LightRenderer) escSequence(sz *int) Event {
 			} // r.buffer[2]
 		} // r.buffer[2]
 	} // r.buffer[1]
+	// Nothing matched. A framed sequence is dropped whole: reading its
+	// introducer as an ALT-key below would type the rest into the query.
+	// Unterminated ones are left alone, as that is how ALT-[, ALT-], ALT-P and
+	// ALT-_ arrive.
+	if csiIntroducer(r.buffer[1]) {
+		// ALT-[ or ALT-O and one or two typed characters can look like a short
+		// sequence, so ask for more than one parameter byte before dropping it
+		if end := csiEnd(r.buffer); end > 4 {
+			*sz = end
+			return Event{Invalid, 0, nil}
+		}
+	} else if stringIntroducer(r.buffer[1]) {
+		if end := stringEnd(r.buffer); end > 0 {
+			*sz = end
+			return Event{Invalid, 0, nil}
+		}
+	}
+
 	rest := bytes.NewBuffer(r.buffer[1:])
 	c, size, err := rest.ReadRune()
 	if err == nil {
