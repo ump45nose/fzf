@@ -99,7 +99,6 @@ Table of Contents
     * [Fish shell](#fish-shell)
     * [fzf Theme Playground](#fzf-theme-playground)
 * [Related projects](#related-projects)
-* [License](#license)
 * [Goods](#goods)
 * [Sponsors :heart:](#sponsors-heart)
 

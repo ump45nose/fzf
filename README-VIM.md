@@ -17,7 +17,6 @@ FZF Vim integration
     * [Starting fzf in a Vim popup window](#starting-fzf-in-a-vim-popup-window)
     * [Starting fzf in a tmux/Zellij popup window](#starting-fzf-in-a-tmuxzellij-popup-window)
     * [Hide statusline](#hide-statusline)
-* [License](#license)
 
 <!-- vim-markdown-toc -->
 
