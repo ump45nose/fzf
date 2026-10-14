@@ -111,7 +111,7 @@ Usage: fzf [options]
     --freeze-right=N         Number of fields to freeze on the right
     --keep-right             Keep the right end of the line visible on overflow
     --scroll-off=LINES       Number of screen lines to keep above or below when
-                             scrolling to the top or to the bottom (default: 0)
+                             scrolling to the top or to the bottom (default: 3)
     --no-hscroll             Disable horizontal scroll
     --hscroll-off=COLS       Number of screen columns to keep to the right of the
                              highlighted substring (default: 10)
