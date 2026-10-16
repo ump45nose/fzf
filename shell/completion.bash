@@ -123,6 +123,7 @@ _fzf_opts_completion() {
     +s --no-sort
     +x --no-extended
     --accept-nth
+    --algo
     --ansi
     --bash
     --bind
@@ -185,6 +186,7 @@ _fzf_opts_completion() {
     --no-multi-line
     --no-scrollbar
     --no-separator
+    --nushell
     --padding
     --pointer
     --preview
