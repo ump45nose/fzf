@@ -60,7 +60,7 @@ Usage: fzf [options]
     --sync                   Synchronous search for multi-staged filtering
 
   GLOBAL STYLE
-    --style=PRESET           Apply a style preset [default|minimal|full[:BORDER_STYLE]
+    --style=PRESET           Apply a style preset [default|minimal|full[:BORDER_STYLE]]
     --color=COLSPEC          Base scheme (dark|light|base16|bw) and/or custom colors
     --no-color               Disable colors
     --no-bold                Do not use bold text
