@@ -8,8 +8,36 @@
 # - $FZF_COMPLETION_OPTS      (default: empty)
 # - $FZF_COMPLETION_PATH_OPTS (default: empty)
 # - $FZF_COMPLETION_DIR_OPTS  (default: empty)
+#
+# Bash note: characters in COMP_WORDBREAKS that also appear in
+# FZF_COMPLETION_TRIGGER cause the trigger to remain on the command line
+# after completion (issue #4945). Prefer triggers such as ** or ~~, or
+# export the trigger before sourcing this file so conflicting characters
+# can be removed from COMP_WORDBREAKS below.
 
 if [[ $- =~ i ]]; then
+
+# When FZF_COMPLETION_TRIGGER is already set, strip any of its non-
+# whitespace characters that also appear in COMP_WORDBREAKS so readline
+# replaces the whole trigger. No-op when the trigger is unset (default
+# **) or set after this file is sourced (see #4945 / README).
+if [[ -n ${FZF_COMPLETION_TRIGGER-} ]]; then
+  __fzf_trigger=$FZF_COMPLETION_TRIGGER
+  __fzf_i=0
+  while ((__fzf_i < ${#__fzf_trigger})); do
+    __fzf_c=${__fzf_trigger:__fzf_i:1}
+    case $__fzf_c in
+      [[:space:]]) ;;
+      *)
+        if [[ $COMP_WORDBREAKS == *"$__fzf_c"* ]]; then
+          COMP_WORDBREAKS=${COMP_WORDBREAKS//"$__fzf_c"/}
+        fi
+        ;;
+    esac
+    ((++__fzf_i))
+  done
+  unset __fzf_trigger __fzf_i __fzf_c
+fi
 
 
 # To use custom commands instead of find, override _fzf_compgen_{path,dir}

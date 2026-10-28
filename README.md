@@ -653,6 +653,14 @@ set <SHIFT-TAB>
 
 ```sh
 # Use ~~ as the trigger sequence instead of the default **
+# Prefer triggers without bash COMP_WORDBREAKS characters (default set:
+# double-quote, single-quote, >, <, =, ;, |, &, (, :). A trigger that
+# contains one (e.g. '==') leaves the trigger on the line after Tab
+# because readline only replaces text past the last word break (see
+# #4945). Export the trigger before sourcing fzf, or strip the
+# conflicting characters from COMP_WORDBREAKS yourself, for example:
+#   export FZF_COMPLETION_TRIGGER='=='
+#   COMP_WORDBREAKS=${COMP_WORDBREAKS//=/}
 export FZF_COMPLETION_TRIGGER='~~'
 
 # Options to fzf command
