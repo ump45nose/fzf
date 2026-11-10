@@ -1792,6 +1792,16 @@ class TestCore < TestInteractive
     tmux.until { assert_match(%r{     0/100000}, it[-1]) }
   end
 
+  def test_info_inline_right_prefix_clearance
+    tmux.send_keys "seq 13 | #{FZF} --info 'inline-right:scope  '", :Enter
+    tmux.until { assert_match(%r{scope  13/13}, it[-1]) }
+    tmux.send_keys '1'
+    tmux.until do
+      assert_match(%r{scope  5/13}, it[-1])
+      refute_match(%r{sscope}, it[-1])
+    end
+  end
+
   def test_info_command
     tmux.send_keys(%(seq 10000 | #{FZF} --separator x --info-command 'echo -e "--\\x1b[33m$FZF_POS\\x1b[m/$FZF_INFO--"'), :Enter)
     tmux.until { assert_match(%r{^  --1/10000/10000-- xx}, it[-2]) }

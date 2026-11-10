@@ -3664,7 +3664,15 @@ func (t *Terminal) printInfoImpl() {
 				pos++
 			}
 		} else {
+			// When the info shrinks, the start column moves right. Pad the
+			// gap from the query (same as the no-prefix path above) so the
+			// previous prefix's first column is not left behind.
+			left := pos
 			pos = max(pos, t.window.Width()-outputLen-util.StringWidth(t.infoPrefix)-1)
+			if pos > left {
+				move(line, left, false)
+				t.window.Print(strings.Repeat(" ", pos-left))
+			}
 			printInfoPrefix()
 		}
 	}
